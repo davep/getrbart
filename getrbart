@@ -1,0 +1,236 @@
+#!/usr/bin/env ruby
+### getrbart --- Export a list of your art from RedBubble.
+## Copyright 2008 by Dave Pearson <davep@davep.org>
+## $Revision: 1.7 $
+##
+## getrbart is free software distributed under the terms of the GNU General
+## Public Licence, version 2. For details see the file COPYING.
+
+### Commentary:
+##
+## getrbart is a simple tool that lets you export a full list of your art
+## or clothing from RedBubble.
+
+### Thanks:
+##
+## o http://www.redbubble.com/people/littleredplanet for reporting a problem
+##   he was having on his box.
+##
+## o http://www.redbubble.com/people/piglet for a really nasty kludge
+##   to work around the above problem.
+
+# Require stuff we need.
+require "net/http"
+require "rexml/document"
+require "getoptlong"
+
+# I'm lazy.
+include Net
+include REXML
+
+############################################################################
+# Emit text but only if we're in verbose mode.
+def verbose( text )
+  $stderr.puts text if $params[ :verbose ]
+end
+
+############################################################################
+# Given the URL of a work on RedBubble, extract its ID.
+def extract_work_id( url )
+  /^.*\/(\d+-\d+-.*)$/.match( url )[ 1 ]
+end
+
+############################################################################
+# Return the path for a specific page.
+def page_path( tagged, page )
+  if tagged then
+    "/people/#{$params[ :user ]}/#{$params[ :product ]}/everything/tags/#{tagged}?page=#{page}"
+  else
+    "/people/#{$params[ :user ]}/#{$params[ :product ]}?page=#{page}"
+  end
+end
+
+############################################################################
+# Grab a page of art.
+def grab_art_page( rb, tagged, page )
+
+  # Figure out the path for the page.
+  path = page_path( tagged, page )
+
+  # Go get it.
+  verbose( "Grabbing content of http://#{$params[ :host ]}:#{$params[ :port ]}#{path}." )
+  page = Document.new( rb.get( path ).body.gsub!( /xmlns=\"[^\"]*\"/, "" ) )
+  verbose( "Content grabbed." )
+
+  # Return it.
+  page
+  
+end
+
+############################################################################
+# Get the max page number of a person's works on RedBubble.
+def get_page_count( rb, tagged )
+
+  verbose( "Getting #{$params[ :product ]} page count..." )
+  verbose( "Only looking for #{$params[ :product ]} tagged with \"#{tagged}\"" ) if tagged 
+
+  # Download the first page of art and grab the body.
+  page = grab_art_page( rb, tagged, 1 )
+
+  # Find the number of the last page of art.
+  last = page.elements.to_a( "//div[@id='pages']/a" ).last
+
+  # If we managed to get that...
+  if last then
+    # ...return it as a number.
+    verbose( "Done (max page is #{last.text.to_i})." )
+    last.text.to_i
+  else
+    # ...or, if we didn't, moan...
+    $stderr.puts "Could not find maximum page number. Assuming just one page."
+    # ...and assime it's a single page.
+    1
+  end
+  
+end
+
+############################################################################
+# Extract the basic details of the works on a given page on RedBubble.
+def get_art_for_page( rb, tagged, page )
+
+  # Get the body of the page of art.
+  if tagged then
+    verbose( "Getting page #{page} of your #{$params[ :product ]} tagged with \"#{tagged}\"" )
+  else
+    verbose( "Getting page #{page} of your #{$params[ :product ]}" )
+  end
+  art = grab_art_page( rb, tagged, page )
+
+  # Get the works from the body.
+  works = art.elements.to_a( "//span[@class='work-info']" )
+
+  # For each work found...
+  works.each do |work|
+    # ...emit the basic details for it.
+    puts extract_work_id( work.elements.to_a( "span[@class='title']/a" ).first.attributes[ "href" ] ) +
+      "\t" +
+      work.elements.to_a( "span[@class='title']/a" ).first.attributes[ "title" ] +
+      "\t" +
+      work.elements.to_a( "a/img" ).first.attributes[ "src" ]
+  end
+
+  verbose( "Done." )
+  
+end
+
+# Print the help screen.
+def printHelp
+  print "getrbart v#{/(\d+\.\d+)/.match( '$Revision: 1.7 $' )[ 1 ]}
+Copyright (C) 2008 by Dave Pearson <davep@davep.org>
+http://www.davep.org/
+
+Supported command line options:
+
+  -h --host <host>         Specify the host to be contacted
+                           (default is \"www.redbubble.com\").
+  -p --port <port>         Specify the port to be connected
+                           (default is 80).
+     --product <product>   Specify the type of product list to
+                           download. Either 'art' or 'clothing'.
+  -t --tagged <tag>        Only get works with a specific tag.
+  -u --user <user>         Specify the RedBubble user.
+  -v --verbose             Work in verbose mode.
+     --help                Display this help.
+  -L --licence             Display the licence for this program.
+
+The results (which are printed to STDOUT) contain one work per line in the
+format:
+
+<work id>\\t<work title>\\t<thumbnail URL>
+"
+end
+
+# Print the licence.
+def printLicence
+  print "getrbart - Export list of your works from RedBubble.
+Copyright (C) 2008 Dave Pearson <davep@davep.org>
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 2 of the License, or (at your option)
+any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 675 Mass
+Ave, Cambridge, MA 02139, USA.
+
+"
+end
+
+# Setup the default parameters.
+$params = {
+  :host       => "www.redbubble.com",
+  :port       => 80,
+  :product    => "art",
+  :tagged     => nil,
+  :user       => nil,
+  :verbose    => false,
+  :help       => false,
+  :licence    => false
+}
+
+# Get the arguments from the command line.
+begin
+  GetoptLong.new().set_options(
+                               [ "--host",       "-h", GetoptLong::REQUIRED_ARGUMENT ],
+                               [ "--port",       "-p", GetoptLong::REQUIRED_ARGUMENT ],
+                               [ "--tagged",     "-t", GetoptLong::REQUIRED_ARGUMENT ],
+                               [ "--user",       "-u", GetoptLong::REQUIRED_ARGUMENT ],
+                               [ "--product",          GetoptLong::REQUIRED_ARGUMENT ],
+                               [ "--verbose",    "-v", GetoptLong::NO_ARGUMENT       ],
+                               [ "--help",             GetoptLong::NO_ARGUMENT       ],
+                               [ "--licence",    "-L", GetoptLong::NO_ARGUMENT       ]
+                               ).each {|name, value| $params[ name.gsub( /^--/, "" ).intern ] = value }
+rescue GetoptLong::Error
+  printHelp()
+  exit 1
+end
+
+if $params[ :help ]
+  printHelp()
+elsif $params[ :licence ]
+  printLicence()
+elsif ![ "art", "clothing" ].include?( $params[ :product ] )
+  $stderr.puts "Product must be either 'art' or 'clothing'"
+  $stderr.puts ""
+  printHelp()
+  exit 1
+elsif $params[ :user ]
+  
+  # With a connection to RedBubble...
+  HTTP.start( $params[ :host ], $params[ :port ] ) do |rb|
+    
+    # Get the page count.
+    last_page = get_page_count( rb, $params[ :tagged ] )
+    
+    # For every page of art...
+    for page in 1..last_page
+      # ...get the works on the page.
+      get_art_for_page( rb, $params[ :tagged ], page )
+    end
+    
+  end
+
+else
+  $stderr.puts "Please specify a RedBubble user ID"
+  $stderr.puts ""
+  printHelp()
+  exit 1
+end
+
+### getrbart ends here
