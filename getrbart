@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 ### getrbart --- Export a list of your art from RedBubble.
-## Copyright 2008 by Dave Pearson <davep@davep.org>
-## $Revision: 1.7 $
+## Copyright 2008,2009 by Dave Pearson <davep@davep.org>
+## $Revision: 1.8 $
 ##
 ## getrbart is free software distributed under the terms of the GNU General
 ## Public Licence, version 2. For details see the file COPYING.
@@ -78,7 +78,7 @@ def get_page_count( rb, tagged )
   page = grab_art_page( rb, tagged, 1 )
 
   # Find the number of the last page of art.
-  last = page.elements.to_a( "//div[@id='pages']/a" ).last
+  last = page.elements.to_a( "//li[@class='page-link']/a" ).last
 
   # If we managed to get that...
   if last then
@@ -125,7 +125,7 @@ end
 
 # Print the help screen.
 def printHelp
-  print "getrbart v#{/(\d+\.\d+)/.match( '$Revision: 1.7 $' )[ 1 ]}
+  print "getrbart v#{/(\d+\.\d+)/.match( '$Revision: 1.8 $' )[ 1 ]}
 Copyright (C) 2008 by Dave Pearson <davep@davep.org>
 http://www.davep.org/
 
